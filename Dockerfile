@@ -1,14 +1,7 @@
-FROM alpine:latest
+FROM teddysun/xray:latest
 
-RUN apk add --no-cache dropbear python3
+EXPOSE 8080
 
-# ===== SSH CREDENTIALS - EDIT BEFORE PUSH =====
-RUN echo 'root:MyRootPass1' | chpasswd && \
-    adduser -D admin && \
-    echo 'admin:MyAdminPass1' | chpasswd
-# ===============================================
+COPY config.json /etc/xray/config.json
 
-COPY proxy.py /proxy.py
-
-# Dropbear on port 109 (internal), proxy.py listens on $PORT
-CMD dropbear -R -p 109 -B -w && python3 /proxy.py
+CMD ["xray", "run", "-config", "/etc/xray/config.json"]
