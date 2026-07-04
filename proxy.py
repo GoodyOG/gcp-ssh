@@ -1,9 +1,22 @@
-import os, socket, threading, select
+import os, socket, threading, select, hashlib, base64
 
 PORT = int(os.environ.get("PORT", 8080))
 SSH_PORT = 109
+WS_MAGIC = b"258EAFA5-E914-47DA-95CA-5AB6DC11B85"
 
-RESP_200 = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+RESP_200 = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nOK"
+
+def parse_headers(data):
+    """Parse HTTP headers from request"""
+    lines = data.split(b"\r\n")
+    if not lines:
+        return {}
+    headers = {}
+    for line in lines[1:]:
+        if b":" in line:
+            key, val = line.split(b":", 1)
+            headers[key.strip().lower()] = val.strip()
+    return headers
 
 def handle(client):
     srv = None
@@ -12,26 +25,38 @@ def handle(client):
         if not req:
             return
 
-        req_str = req.decode('utf-8', errors='ignore')
-        req_clean = req_str.lower().replace(" ", "")
+        headers = parse_headers(req)
 
-        # Health check (no WebSocket upgrade) — respond 200
-        if "upgrade:websocket" not in req_clean:
+        # Check if it's a WebSocket upgrade
+        upgrade = headers.get(b"upgrade", b"").lower()
+        conn = headers.get(b"connection", b"").lower()
+        ws_key = headers.get(b"sec-websocket-key", b"")
+
+        is_ws = b"websocket" in upgrade or b"websocket" in conn or b"upgrade" in conn
+
+        if not is_ws:
+            # Health check - respond 200
             client.sendall(RESP_200)
             return
 
-        # WebSocket upgrade — forward to Dropbear
+        # WebSocket upgrade - compute accept key
+        accept_key = base64.b64encode(
+            hashlib.sha1(ws_key + WS_MAGIC).digest()
+        )
+
+        resp = (
+            b"HTTP/1.1 101 Switching Protocols\r\n"
+            b"Upgrade: websocket\r\n"
+            b"Connection: Upgrade\r\n"
+            b"Sec-WebSocket-Accept: " + accept_key + b"\r\n"
+            b"Sec-WebSocket-Protocol: ssh\r\n"
+            b"\r\n"
+        )
+        client.sendall(resp)
+
+        # Forward to Dropbear
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.connect(("127.0.0.1", SSH_PORT))
-
-        # Send HTTP/1.1 101 Switching Protocols
-        resp = (
-            "HTTP/1.1 101 Switching Protocols\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            "\r\n"
-        ).encode()
-        client.sendall(resp)
 
         # Bidirectional forwarding
         while True:
