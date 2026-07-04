@@ -49,7 +49,6 @@ def handle(client):
             b"Upgrade: websocket\r\n"
             b"Connection: Upgrade\r\n"
             b"Sec-WebSocket-Accept: " + accept_key + b"\r\n"
-            b"Sec-WebSocket-Protocol: ssh\r\n"
             b"\r\n"
         )
         client.sendall(resp)
