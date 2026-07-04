@@ -4,6 +4,7 @@ RUN apk add --no-cache dropbear python3
 
 # ===== SSH CREDENTIALS - EDIT BEFORE PUSH =====
 RUN echo 'root:MyRootPass1' | chpasswd && \
+    adduser -D admin && \
     echo 'admin:MyAdminPass1' | chpasswd
 # ===============================================
 
